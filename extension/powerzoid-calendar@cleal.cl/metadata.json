@@ -1,0 +1,8 @@
+{
+  "name": "PowerZoid Calendar",
+  "description": "Muestra tu próximo evento de Google Calendar en la barra superior: hora, título y color del calendario. Hover para detalles y enlace de videollamada, aviso 10 minutos antes.",
+  "uuid": "powerzoid-calendar@cleal.cl",
+  "version": 1,
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "url": "https://github.com/ChristianLeal1978/powerzoid-calendar"
+}

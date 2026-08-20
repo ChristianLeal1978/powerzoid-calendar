@@ -1,0 +1,18 @@
+[Unit]
+Description=PowerZoid Calendar — Daemon de integración con Google Calendar
+Documentation=https://github.com/ChristianLeal1978/powerzoid-calendar
+After=network-online.target graphical-session.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/powerzoid-calendar-daemon.py
+Restart=on-failure
+RestartSec=15
+
+# Evita que el daemon acumule demasiado output en el journal
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
