@@ -74,6 +74,7 @@ _lock             = threading.Lock()
 _colors_cache     = None
 _auth_opened_once = False
 _pending_state    = None
+_pending_auth_url = None
 
 
 # ─────────────────────────────────────────────
@@ -171,8 +172,14 @@ def save_token(tok: dict) -> None:
         pass
 
 
-def build_auth_url(cfg: dict) -> str:
-    global _pending_state
+def build_auth_url(cfg: dict, force_new: bool = False) -> str:
+    """Genera la URL de autorización. Reutiliza el `state` pendiente entre
+    sondeos para no invalidar una pestaña de Google que el usuario todavía
+    está completando; solo se fuerza un `state` nuevo cuando el usuario
+    inicia explícitamente una reconexión."""
+    global _pending_state, _pending_auth_url
+    if not force_new and _pending_auth_url and _pending_state:
+        return _pending_auth_url
     _pending_state = f"pzc-{int(time.time())}"
     params = {
         "client_id":             cfg["client_id"],
@@ -184,7 +191,14 @@ def build_auth_url(cfg: dict) -> str:
         "include_granted_scopes": "true",
         "state":                 _pending_state,
     }
-    return f"{AUTH_ENDPOINT}?{urlencode(params)}"
+    _pending_auth_url = f"{AUTH_ENDPOINT}?{urlencode(params)}"
+    return _pending_auth_url
+
+
+def _clear_pending_auth() -> None:
+    global _pending_state, _pending_auth_url
+    _pending_state    = None
+    _pending_auth_url = None
 
 
 def exchange_code(cfg: dict, code: str) -> dict:
@@ -198,6 +212,7 @@ def exchange_code(cfg: dict, code: str) -> dict:
     tok = _http_call("POST", TOKEN_ENDPOINT, data=data, form=True)
     tok["obtained_at"] = time.time()
     save_token(tok)
+    _clear_pending_auth()
     return tok
 
 
@@ -224,6 +239,13 @@ def get_access_token(cfg: dict) -> str | None:
     if time.time() > obtained + expires_in - 90:
         tok = refresh_access_token(cfg, tok)
     return tok["access_token"]
+
+
+def _is_invalid_grant(e: Exception) -> bool:
+    """True solo si Google rechazó el refresh_token (revocado/expirado).
+    Fallos transitorios de red (DNS, timeout, sin conectividad al arrancar)
+    no deben forzar una reconexión manual del usuario."""
+    return isinstance(e, urllib.error.HTTPError) and e.code in (400, 401)
 
 
 def maybe_auto_open_browser(url: str) -> None:
@@ -388,13 +410,17 @@ def poll_once() -> None:
     try:
         access_token = get_access_token(cfg)
     except Exception as e:
-        log(f"  [auth] Refresh falló: {e}")
-        try:
-            TOKEN_FILE.unlink()
-        except Exception:
-            pass
-        url = build_auth_url(cfg)
-        set_status(state="no_auth", event=None, auth_url=url, error=str(e))
+        if _is_invalid_grant(e):
+            log(f"  [auth] Google rechazó el token, reconexión requerida: {e}")
+            try:
+                TOKEN_FILE.unlink()
+            except Exception:
+                pass
+            url = build_auth_url(cfg)
+            set_status(state="no_auth", event=None, auth_url=url, error=str(e))
+        else:
+            log(f"  [auth] Refresh falló temporalmente, se reintentará: {e}")
+            set_status(state="error", error=f"Sin conexión: {e}")
         return
 
     if not access_token:
@@ -554,7 +580,7 @@ class Handler(BaseHTTPRequestHandler):
             if not cfg.get("client_id") or not cfg.get("client_secret"):
                 self._json(400, {"error": "Falta client_id/client_secret en la configuración"})
                 return
-            url = build_auth_url(cfg)
+            url = build_auth_url(cfg, force_new=True)
             set_status(state="no_auth", auth_url=url)
             try:
                 webbrowser.open(url)
@@ -570,6 +596,7 @@ class Handler(BaseHTTPRequestHandler):
                 pass
             global _colors_cache
             _colors_cache = None
+            _clear_pending_auth()
             set_status(state="no_config" if not read_config().get("client_id") else "no_auth",
                        event=None, auth_url=None, error=None)
             self._json(200, {"status": "desconectado"})
