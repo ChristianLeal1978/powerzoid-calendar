@@ -188,6 +188,22 @@ function _isTomorrow(date, now) {
     return _isSameDay(date, tomorrow);
 }
 
+function _startOfWeek(date) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    const dayIdx = (d.getDay() + 6) % 7; // lunes=0 … domingo=6
+    d.setDate(d.getDate() - dayIdx);
+    return d;
+}
+
+function _isNextWeek(date, now) {
+    const nextWeekStart = _startOfWeek(now);
+    nextWeekStart.setDate(nextWeekStart.getDate() + 7);
+    const weekAfterStart = new Date(nextWeekStart);
+    weekAfterStart.setDate(weekAfterStart.getDate() + 7);
+    return date >= nextWeekStart && date < weekAfterStart;
+}
+
 function _formatWhen(ev) {
     const start = new Date(ev.start);
     const now   = new Date();
@@ -692,6 +708,7 @@ class CalendarIndicator extends PanelMenu.Button {
             time:  _formatWhen(ev),
             title: _truncate(ev.summary, MAX_TITLE_CHARS),
             dot:   ev.is_ongoing ? ONGOING_COLOR : (ev.color || '#9e9e9e'),
+            dim:   !ev.is_ongoing && _isNextWeek(new Date(ev.start), new Date()),
         };
     }
 
@@ -710,13 +727,17 @@ class CalendarIndicator extends PanelMenu.Button {
         return { time: '', title: messages[status.state] || '📅  …', dot: null };
     }
 
-    _applyPanelParts({ time, title, dot }) {
+    _applyPanelParts({ time, title, dot, dim }) {
         this._currentDotColor = dot || '#9e9e9e';
         this._timeLabel.text  = time;
         this._timeLabel.visible = !!time;
         this._dot.visible = !!dot;
         this._dot.set_style(this._dotStyle(this._currentDotColor));
         this._titleLabel.text = title;
+
+        const opacity = dim ? 128 : 255;
+        this._timeLabel.opacity  = opacity;
+        this._titleLabel.opacity = opacity;
     }
 
     // ─────────────────────────────────────────────────────────────────────
