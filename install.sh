@@ -33,8 +33,12 @@ systemctl --user restart powerzoid-calendar.service
 
 # [3] Extensión GNOME
 echo "[3/4] Instalando extensión GNOME Shell..."
-mkdir -p "$EXT_DIR"
-cp -r "$SCRIPT_DIR/extension/$UUID/." "$EXT_DIR/"
+if [ "$(readlink -f "$EXT_DIR" 2>/dev/null)" = "$(readlink -f "$SCRIPT_DIR/extension/$UUID")" ]; then
+    echo "  → Symlink de desarrollo detectado, se omite la copia"
+else
+    mkdir -p "$EXT_DIR"
+    cp -r "$SCRIPT_DIR/extension/$UUID/." "$EXT_DIR/"
+fi
 
 # [4] Activar extensión
 echo "[4/4] Activando extensión..."
